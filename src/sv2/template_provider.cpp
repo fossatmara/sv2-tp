@@ -366,7 +366,7 @@ void Sv2TemplateProvider::ThreadSv2ClientHandler(size_t client_id)
 
                 {
                     LOCK(m_tp_mutex);
-                    if (new_prev_hash != prev_hash) {
+                    if (new_prev_hash != m_best_prev_hash) {
                         LogPrintLevel(BCLog::SV2, BCLog::Level::Trace, "Tip changed, client id=%zu\n",
                             client_id);
                         future_template = true;
