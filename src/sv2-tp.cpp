@@ -17,11 +17,17 @@
 #include <sv2/template_provider.h>
 #include <tinyformat.h>
 #include <util/chaintype.h>
+#include <util/fs.h>
+#include <util/fs_helpers.h>
+#include <util/syserror.h>
 #include <util/translation.h>
 
+#include <cerrno>
 #ifndef WIN32
 #include <csignal>
 #endif
+#include <fstream>
+#include <system_error>
 
 static const char* const HELP_USAGE{R"(
 sv2-tp implements the Stratum v2 Template Provider role. It connects to Bitcoin
@@ -45,6 +51,56 @@ Examples:
 
 const TranslateFn G_TRANSLATION_FUN{nullptr};
 
+namespace {
+constexpr const char* SV2_TP_PID_FILENAME{"sv2-tp.pid"};
+bool g_generated_pid{false};
+
+fs::path GetPidFile(const ArgsManager& args)
+{
+    return AbsPathForConfigVal(args, args.GetPathArg("-pid", SV2_TP_PID_FILENAME));
+}
+
+[[nodiscard]] bool CreatePidFile(const ArgsManager& args)
+{
+    if (args.IsArgDisabled("-pid")) return true;
+
+    std::ofstream file{GetPidFile(args)};
+    if (file) {
+#ifdef WIN32
+        file << GetCurrentProcessId() << '\n';
+#else
+        file << getpid() << '\n';
+#endif
+        g_generated_pid = true;
+        LogInfo("Created PID file %s", fs::PathToString(GetPidFile(args)));
+        return true;
+    }
+
+    LogError("Unable to create PID file '%s': %s", fs::PathToString(GetPidFile(args)), SysErrorString(errno));
+    return false;
+}
+
+void RemovePidFile(const ArgsManager& args)
+{
+    if (!g_generated_pid) return;
+    const auto pid_path{GetPidFile(args)};
+    if (std::error_code error; !fs::remove(pid_path, error)) {
+        std::string msg{error ? error.message() : "File does not exist"};
+        LogPrintf("Unable to remove PID file (%s): %s\n", fs::PathToString(pid_path), msg);
+    }
+}
+
+class PidFileGuard
+{
+public:
+    explicit PidFileGuard(const ArgsManager& args) : m_args(args) {}
+    ~PidFileGuard() { RemovePidFile(m_args); }
+
+private:
+    const ArgsManager& m_args;
+};
+} // namespace
+
 static void AddArgs(ArgsManager& args)
 {
     SetupHelpOptions(args);
@@ -59,6 +115,7 @@ static void AddArgs(ArgsManager& args)
     args.AddArg("-version", "Print version and exit", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     args.AddArg("-datadir=<dir>", "Specify non-default Bitcoin Core data directory", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     args.AddArg("-conf=<file>", "Specify path to the configuration file (default: sv2-tp.conf inside the datadir). Set -conf=0 to disable loading any configuration file.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    args.AddArg("-pid=<file>", strprintf("Specify pid file. Relative paths will be prefixed by a net-specific datadir location. (default: %s)", SV2_TP_PID_FILENAME), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     args.AddArg("-ipcconnect=<address>", "Connect to bitcoin-node process in the background to perform online operations. Valid <address> values are 'unix' to connect to the default socket, 'unix:<socket path>' to connect to a socket at a nonstandard path. Default value: unix", ArgsManager::ALLOW_ANY, OptionsCategory::IPC);
     args.AddArg("-sv2bind=<addr>[:<port>]", strprintf("Bind to given address and always listen on it (default: 127.0.0.1). Use [host]:port notation for IPv6."), ArgsManager::ALLOW_ANY | ArgsManager::NETWORK_ONLY, OptionsCategory::CONNECTION);
     args.AddArg("-sv2port=<port>", strprintf("Listen for Stratum v2 connections on <port> (default: %u, testnet3: %u, testnet4: %u, signet: %u, regtest: %u).", defaultBaseParams->Sv2Port(), testnetBaseParams->Sv2Port(), testnet4BaseParams->Sv2Port(), signetBaseParams->Sv2Port(), regtestBaseParams->Sv2Port()), ArgsManager::ALLOW_ANY | ArgsManager::NETWORK_ONLY, OptionsCategory::CONNECTION);
@@ -88,6 +145,7 @@ static void HandleSIGTERM(int)
 MAIN_FUNCTION
 {
     ArgsManager& args = gArgs;
+    PidFileGuard pid_file_guard{args};
     AddArgs(args);
     std::string error_message;
     if (!args.ParseParameters(argc, argv, error_message)) {
@@ -129,6 +187,11 @@ MAIN_FUNCTION
     LogInstance().m_print_to_console = args.GetBoolArg("-printtoconsole", DEFAULT_PRINTTOCONSOLE);
     if (!init::StartLogging(args)) {
         tfm::format(std::cerr, "Error: StartLogging failed\n");
+        return EXIT_FAILURE;
+    }
+
+    if (!CreatePidFile(args)) {
+        tfm::format(std::cerr, "Error: Unable to create PID file at %s\n", fs::PathToString(GetPidFile(args)));
         return EXIT_FAILURE;
     }
 

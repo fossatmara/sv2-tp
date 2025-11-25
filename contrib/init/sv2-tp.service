@@ -5,24 +5,22 @@
 # See "man systemd.service" for details.
 
 # Note that almost all daemon options could be specified in
-# /etc/bitcoin/bitcoin.conf, but keep in mind those explicitly
+# /etc/bitcoin/sv2-tp.conf, but keep in mind those explicitly
 # specified as arguments in ExecStart= will override those in the
 # config file.
 
 [Unit]
-Description=Bitcoin daemon
-Documentation=https://github.com/bitcoin/bitcoin/blob/master/doc/init.md
+Description=Stratum v2 Template Provider
+Documentation=https://github.com/stratum-mining/sv2-tp
 
 # https://www.freedesktop.org/wiki/Software/systemd/NetworkTarget/
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart=/usr/bin/bitcoind -pid=/run/bitcoind/bitcoind.pid \
-                            -conf=/etc/bitcoin/bitcoin.conf \
-                            -datadir=/var/lib/bitcoind \
-                            -startupnotify='systemd-notify --ready' \
-                            -shutdownnotify='systemd-notify --stopping'
+ExecStart=/usr/bin/sv2-tp -pid=/run/bitcoin/sv2-tp.pid \
+                          -conf=/etc/bitcoin/sv2-tp.conf \
+                          -datadir=/var/lib/bitcoind
 
 # Make sure the config directory is readable by the service user
 ExecStartPre=!/bin/chgrp bitcoin /etc/bitcoin
@@ -30,9 +28,8 @@ ExecStartPre=!/bin/chgrp bitcoin /etc/bitcoin
 # Process management
 ####################
 
-Type=notify
-NotifyAccess=all
-PIDFile=/run/bitcoind/bitcoind.pid
+Type=simple
+PIDFile=/run/bitcoin/sv2-tp.pid
 
 Restart=on-failure
 TimeoutStartSec=infinity
@@ -44,8 +41,8 @@ TimeoutStopSec=600
 # Run as bitcoin:bitcoin
 User=bitcoin
 
-# /run/bitcoind
-RuntimeDirectory=bitcoind
+# /run/bitcoin
+RuntimeDirectory=bitcoin
 RuntimeDirectoryMode=0710
 
 # /etc/bitcoin
