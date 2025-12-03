@@ -206,7 +206,7 @@ This client connects to your node to receive new block templates and then "decla
 them to a Job Declarator server. Additionally it connects to the pool itself.
 
 Copy [jdc-config-hosted-example.toml](https://github.com/stratum-mining/stratum/blob/main/roles/jd-client/config-examples/jdc-config-hosted-example.toml)
-to e.g. `~/.stratum/testnet4-jdc.toml`, change `tp_address` to `127.0.0.1:48336` and comment out `tp_authority_public_key`.
+to e.g. `~/.stratum/testnet4-jdc.toml` and comment out `tp_authority_public_key`.
 
 The `coinbase_outputs` is used for fallback to solo mining. Generate an address
 of any type and then use the `getaddressinfo` RPC to find its public key.
